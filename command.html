@@ -96,7 +96,7 @@
             // 3. Encrypt Part 2
             const dataBytes = new TextEncoder().encode(part2);
             // JsAscon.encrypt(key, nonce, data, associatedData)
-            const encrypted = JsAscon.encrypt(asconKey, nonce, dataBytes, new Uint8Array(0));
+            const encrypted = JsAscon.encrypt(asconKey, nonce, new Uint8Array(0), dataBytes);
 
             // 4. Combine: Nonce (16) + Encrypted Data (includes Tag)
             const combined = new Uint8Array(nonce.length + encrypted.length);
