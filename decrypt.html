@@ -1,139 +1,141 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gojiberry Ntfy Decryptor</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/js-ascon@1.3.0/dist/ascon.min.js"></script>
-    <style>
-        body { background-color: #f4f7f6; padding-top: 50px; }
-        .container { max-width: 600px; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
-        #decryptionResult { white-space: pre-wrap; word-break: break-all; }
-    </style>
+  <meta charset="UTF-8">
+  <title>Gojiberry Decryptor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Bootstrap CDN -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
-<body>
+<body class="bg-light">
 
-<div class="container">
-    <h3 class="mb-4">Gojiberry Ntfy Decryptor</h3>
-    
-    <div class="mb-3">
-        <label class="form-label fw-bold">Encryption Key</label>
-        <input type="password" id="encKey" class="form-control" placeholder="Your secret key">
+<div class="container mt-5">
+  <div class="card shadow">
+    <div class="card-body">
+      <h4 class="card-title mb-4">Gojiberry Decryptor</h4>
+
+      <div class="mb-3">
+        <label class="form-label">Encryption Key</label>
+        <input type="text" id="encKey" class="form-control">
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Ciphertext (Base64)</label>
+        <input type="text" id="ciphertext" class="form-control">
+      </div>
+
+      <div class="d-flex gap-2">
+        <button id="saveBtn" class="btn btn-secondary">Save</button>
+        <button id="decipherBtn" class="btn btn-primary">Decipher</button>
+      </div>
+
+      <div id="message" class="mt-3"></div>
+
+      <div class="mt-3">
+        <label class="form-label">Decryption Result</label>
+        <div id="result" class="form-control bg-white" style="min-height: 80px;"></div>
+      </div>
     </div>
-
-    <div class="mb-3">
-        <label class="form-label fw-bold">Ciphertext (Base64)</label>
-        <textarea id="ciphertext" class="form-control" rows="4" placeholder="Paste the encrypted string here..."></textarea>
-    </div>
-
-    <div class="d-flex gap-2 mb-4">
-        <button id="saveBtn" class="btn btn-outline-primary">Save Settings</button>
-        <button id="decipherBtn" class="btn btn-primary px-4">Decipher</button>
-    </div>
-
-    <div id="statusAlert" class="alert d-none" role="alert"></div>
-
-    <div id="resultContainer" class="d-none">
-        <hr>
-        <label class="form-label fw-bold">Decrypted Result:</label>
-        <div id="decryptionResult" class="p-3 bg-light border rounded text-dark"></div>
-    </div>
+  </div>
 </div>
 
-<script>
-    const keyInput = document.getElementById('encKey');
-    const cipherInput = document.getElementById('ciphertext');
-    const statusAlert = document.getElementById('statusAlert');
-    const resultContainer = document.getElementById('resultContainer');
-    const resultDiv = document.getElementById('decryptionResult');
+<script type="module">
+import { chacha20poly1305 } from "https://esm.sh/@noble/ciphers@0.5.3/chacha";
 
-    window.onload = () => {
-        // 1. Populate Key from Local Storage
-        const savedKey = localStorage.getItem('ntfy_enc_key_pref');
-        if (savedKey !== null) keyInput.value = savedKey;
+const keyInput = document.getElementById("encKey");
+const ciphertextInput = document.getElementById("ciphertext");
+const messageDiv = document.getElementById("message");
+const resultDiv = document.getElementById("result");
 
-        // 2. Populate Ciphertext from URL Query String
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlCipher = urlParams.get('ciphertext');
-        if (urlCipher) cipherInput.value = urlCipher;
-    };
+const enc = new TextEncoder();
+const dec = new TextDecoder();
 
-    // Save Logic
-    document.getElementById('saveBtn').onclick = () => {
-        localStorage.setItem('ntfy_enc_key_pref', keyInput.value);
-        showFeedback('Key saved to local storage.', 'success');
-    };
+// Message display
+function showMessage(text, type="success") {
+  messageDiv.innerHTML = `<div class="alert alert-${type}">${text}</div>`;
+  setTimeout(() => messageDiv.innerHTML = "", 5000);
+}
 
-    // Decipher Logic
-    document.getElementById('decipherBtn').onclick = async () => {
-        const rawKey = keyInput.value;
-        const base64Data = cipherInput.value.trim();
+// Load initial values
+window.addEventListener("DOMContentLoaded", () => {
+  // Load key from localStorage
+  const savedKey = localStorage.getItem("ntfy_enc_key_pref");
+  if (savedKey !== null) keyInput.value = savedKey;
 
-        if (typeof JsAscon === 'undefined') {
-            showFeedback('Error: JsAscon library not loaded.', 'danger');
-            return;
-        }
+  // Load ciphertext from query string
+  const params = new URLSearchParams(window.location.search);
+  const ct = params.get("ciphertext");
+  if (ct !== null) ciphertextInput.value = ct;
+});
 
-        if (!rawKey) {
-            showFeedback('Please provide the Encryption Key.', 'warning');
-            return;
-        }
+// Save button
+document.getElementById("saveBtn").addEventListener("click", () => {
+  localStorage.setItem("ntfy_enc_key_pref", keyInput.value);
+  showMessage("Encryption key saved");
+});
 
-        if (!base64Data) {
-            showFeedback('Please provide the Ciphertext.', 'warning');
-            return;
-        }
+// SHA-256
+async function sha256(bytes) {
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return new Uint8Array(hash);
+}
 
-        try {
-            // 1. Decode Base64 to Bytes
-            const binaryString = atob(base64Data);
-            const combinedBytes = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) {
-                combinedBytes[i] = binaryString.charCodeAt(i);
-            }
+// Base64 decode
+function fromBase64(b64) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
 
-            // 2. Validate length (at least 16 bytes for nonce + 16 bytes for tag)
-            if (combinedBytes.length < 32) {
-                throw new Error('Ciphertext is too short to be valid.');
-            }
+// Decipher
+document.getElementById("decipherBtn").addEventListener("click", async () => {
+  try {
+    const keyText = keyInput.value;
+    const ciphertextB64 = ciphertextInput.value;
 
-            // 3. Extract Nonce (first 16 bytes) and Ciphertext+Tag (remainder)
-            const nonce = combinedBytes.slice(0, 16);
-            const encryptedData = combinedBytes.slice(16);
-
-            // 4. Hash key with SHA-256 and take first 16 bytes
-            const keyBytes = new TextEncoder().encode(rawKey);
-            const hashBuffer = await crypto.subtle.digest('SHA-256', keyBytes);
-            const asconKey = new Uint8Array(hashBuffer).slice(0, 16);
-
-            // 5. Decrypt using JsAscon
-            // JsAscon.decrypt(key, nonce, ciphertext, associatedData)
-            const decryptedBytes = JsAscon.decrypt(asconKey, nonce, new Uint8Array(0), encryptedData);
-
-            if (decryptedBytes) {
-                const plainText = new TextDecoder().decode(decryptedBytes);
-                
-                // Success Display
-                resultDiv.textContent = plainText;
-                resultContainer.classList.remove('d-none');
-                showFeedback('Decryption successful!', 'success');
-            } else {
-                throw new Error('Decryption failed (Authentication Error). Is the key correct?');
-            }
-
-        } catch (err) {
-            resultContainer.classList.add('d-none');
-            showFeedback('Error: ' + err.message, 'danger');
-        }
-    };
-
-    function showFeedback(msg, type) {
-        statusAlert.textContent = msg;
-        statusAlert.className = `alert alert-${type} mt-3`;
-        statusAlert.classList.remove('d-none');
-        setTimeout(() => statusAlert.classList.add('d-none'), 5000);
+    if (!keyText) {
+      showMessage("Encryption key is required", "danger");
+      return;
     }
+
+    if (!ciphertextB64) {
+      showMessage("Ciphertext is required", "danger");
+      return;
+    }
+
+    // Decode base64
+    const combined = fromBase64(ciphertextB64);
+
+    if (combined.length < 13) {
+      throw new Error("Ciphertext too short");
+    }
+
+    // Extract nonce (first 12 bytes)
+    const nonce = combined.slice(0, 12);
+    const ciphertext = combined.slice(12);
+
+    // Hash key
+    const keyBytes = enc.encode(keyText);
+    const hashedKey = await sha256(keyBytes);
+
+    // Decrypt
+    const cipher = chacha20poly1305(hashedKey, nonce);
+    const plaintextBytes = cipher.decrypt(ciphertext);
+
+    // Convert UTF-8 bytes to string
+    const plaintext = dec.decode(plaintextBytes);
+
+    resultDiv.textContent = plaintext;
+    showMessage("Decryption successful");
+  } catch (err) {
+    resultDiv.textContent = "";
+    showMessage(err.message || "Decryption failed", "danger");
+  }
+});
 </script>
 
 </body>
