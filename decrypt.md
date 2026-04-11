@@ -1,0 +1,19 @@
+Generate an HTML and plain Javascript page without any build step, depending only on CDN, with these requirements:
+- A textbox to store "Encryption key"
+   - On page load, this textbox must be populated with a value from local storage if the storage key `ntfy_enc_key_pref` exists
+- A button "Save" to save "Encryption key" to local storage key `ntfy_enc_key_pref`
+- A textbox to display "Ciphertext"
+   - On page load, this textbox must be populated with a value from query string if query string key `ciphertext` exists
+- A button "Decipher" to decipher "Ciphertext". This button does this sequentially:
+   - Validate that "Encryption key" is set
+   - Decode the base64 encoded ciphertext as bytes
+   - Use ChaCha20-Poly1305 decryption to decrypt the ciphertext
+      - Hash with SHA-256 the encryption key that is input in "Encryption key" textbox
+      - Take the first 12 bytes of the ciphertext as the nonce
+      - Decrypt the text
+   - Display error or success messages for 5 seconds
+   - Display the decryption result in a `div` below "Decipher" button
+- When converting to and from bytes, all strings must be treated as UTF-8 strings, not UTF-16 strings
+- Use https://esm.sh/@noble/ciphers@0.5.3/chacha CDN for ChaCha20-Poly1305 library
+- Use Bootstrap (CDN version) for the visual stying
+- The styling must be consistent with the previous page.
