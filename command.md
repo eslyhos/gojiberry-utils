@@ -1,0 +1,26 @@
+Generate an HTML and plain Javascript page without any build step, depending only on CDN, with these requirements:
+- A textbox to store "Ntfy topic".
+   - On page load, this textbox must be populated with a value from local storage if the storage key `ntfy_topic_pref` exists
+- A textbox to store "Encryption key"
+   - On page load, this textbox must be populated with a value from local storage if the storage key `ntfy_enc_key_pref` exists
+- A textbox to store "Command"
+- A button "Save" to save both "Ntfy topic" and "Encryption key" to local storage
+   - Allow saving empty values
+   - Store "Ntfy topic" to local storage key `ntfy_topic_pref`
+   - Store "Encryption key" to local storage key `ntfy_enc_key_pref`
+- A button "Send" to send "Command" to ntfy server. This button does this sequentially:
+   - Validate that "Ntfy topic" and "Encryption key" are set
+   - Split "Command" text by comma (","). For example, if the command is "Hi, how are you?" then split it into "Hi" and "how are you?"
+   - If there are more than one comma, split only at the first comma.
+   - Use ChaCha20-Poly1305 encryption to encrypt the second part (in the example, "how are you?").
+      - Hash with SHA-256 the encryption key that is input in "Encryption key" textbox
+      - Generate a random 12 byte nonce
+      - Encrypt the text and prepend the nonce to the ciphertext
+   - Encode the ciphertext as base64 encoded string
+   - Combine the first part (in the example, "Hi") with the ciphertext. For example: "Hi, bWFueXRocmVhZGZv"
+   - Send it to ntfy server topic that is specified in "Ntfy topic" textbox
+   - Display error or success messages for 5 seconds
+- When converting to and from bytes, all strings must be treated as UTF-8 strings, not UTF-16 strings
+- There is no need to listen to ntfy server.
+- Use https://esm.sh/@noble/ciphers@0.5.3/chacha CDN for ChaCha20-Poly1305 library
+- Use Bootstrap (CDN version) for the visual stying
