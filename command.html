@@ -144,6 +144,8 @@ document.getElementById("sendBtn").addEventListener("click", async () => {
     // Final payload
     const payload = `${firstPart}, ${encoded}`;
 
+    showMessage("Sending message ...", "info");
+
     // Send to ntfy
     const response = await fetch(`https://ntfy.sh/${encodeURIComponent(topic)}`, {
       method: "POST",
