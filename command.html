@@ -156,6 +156,7 @@ document.getElementById("sendBtn").addEventListener("click", async () => {
       throw new Error("Failed to send message");
     }
 
+    commandInput.value = "";
     showMessage("Message sent successfully");
   } catch (err) {
     showMessage(err.message || "Error occurred", "danger");
