@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Gojiberry Decryptor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <!-- Bootstrap CDN -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+<div class="container mt-5">
+  <div class="card shadow">
+    <div class="card-body">
+      <h4 class="card-title mb-4">Gojiberry Decryptor</h4>
+
+      <div class="mb-3">
+        <label class="form-label">Encryption Key</label>
+        <input type="text" id="encKey" class="form-control">
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Ciphertext (Base64)</label>
+        <input type="text" id="ciphertext" class="form-control">
+      </div>
+
+      <div class="d-flex gap-2">
+        <button id="saveBtn" class="btn btn-secondary">Save</button>
+        <button id="decipherBtn" class="btn btn-primary">Decipher</button>
+      </div>
+
+      <div id="message" class="mt-3"></div>
+
+      <div class="mt-3">
+        <label class="form-label">Decryption Result</label>
+        <div id="result" class="form-control bg-white" style="min-height: 80px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { chacha20poly1305 } from "https://esm.sh/@noble/ciphers@0.5.3/chacha";
+
+const keyInput = document.getElementById("encKey");
+const ciphertextInput = document.getElementById("ciphertext");
+const messageDiv = document.getElementById("message");
+const resultDiv = document.getElementById("result");
+
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+// Message display
+function showMessage(text, type="success") {
+  messageDiv.innerHTML = `<div class="alert alert-${type}">${text}</div>`;
+  setTimeout(() => messageDiv.innerHTML = "", 5000);
+}
+
+// Load initial values
+window.addEventListener("DOMContentLoaded", () => {
+  // Load key from localStorage
+  const savedKey = localStorage.getItem("ntfy_enc_key_pref");
+  if (savedKey !== null) keyInput.value = savedKey;
+
+  // Load ciphertext from query string
+  const params = new URLSearchParams(window.location.search);
+  const ct = params.get("ciphertext");
+  if (ct !== null) ciphertextInput.value = ct;
+});
+
+// Save button
+document.getElementById("saveBtn").addEventListener("click", () => {
+  localStorage.setItem("ntfy_enc_key_pref", keyInput.value);
+  showMessage("Encryption key saved");
+});
+
+// SHA-256
+async function sha256(bytes) {
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return new Uint8Array(hash);
+}
+
+// Base64 decode
+function fromBase64(b64) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+// Decipher
+document.getElementById("decipherBtn").addEventListener("click", async () => {
+  try {
+    const keyText = keyInput.value;
+    const ciphertextB64 = ciphertextInput.value;
+
+    if (!keyText) {
+      showMessage("Encryption key is required", "danger");
+      return;
+    }
+
+    if (!ciphertextB64) {
+      showMessage("Ciphertext is required", "danger");
+      return;
+    }
+
+    // Decode base64
+    const combined = fromBase64(ciphertextB64);
+
+    if (combined.length < 13) {
+      throw new Error("Ciphertext too short");
+    }
+
+    // Extract nonce (first 12 bytes)
+    const nonce = combined.slice(0, 12);
+    const ciphertext = combined.slice(12);
+
+    // Hash key
+    const keyBytes = enc.encode(keyText);
+    const hashedKey = await sha256(keyBytes);
+
+    // Decrypt
+    const cipher = chacha20poly1305(hashedKey, nonce);
+    const plaintextBytes = cipher.decrypt(ciphertext);
+
+    // Convert UTF-8 bytes to string
+    const plaintext = dec.decode(plaintextBytes);
+
+    resultDiv.textContent = plaintext;
+    showMessage("Decryption successful");
+  } catch (err) {
+    resultDiv.textContent = "";
+    showMessage(err.message || "Decryption failed", "danger");
+  }
+});
+</script>
+
+</body>
+</html>
